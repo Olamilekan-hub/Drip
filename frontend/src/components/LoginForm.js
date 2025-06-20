@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   signInWithEmailAndPassword, 
   signInWithPopup, 
@@ -16,6 +17,8 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [showResetMessage, setShowResetMessage] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -41,6 +44,11 @@ function LoginForm() {
       setFormData({ email: '', password: '' });
       // Hide success message after 3 seconds
       setTimeout(() => setShowSuccess(false), 3000);
+      if (userProfile?.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (error) {
       console.error('Login error:', error);
       setErrors({
@@ -62,6 +70,11 @@ function LoginForm() {
       await signInWithPopup(auth, provider);
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
+      if (userProfile?.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (error) {
       console.error('Google sign-in error:', error);
       setErrors({
@@ -91,7 +104,7 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black relative overflow-hidden">
+    <div className="relative flex items-center justify-center min-h-screen overflow-hidden bg-black">
       <style>{`
         input:-webkit-autofill,
         input:-webkit-autofill:focus,
@@ -105,13 +118,13 @@ function LoginForm() {
         }
       `}</style>
       {/* Video background with enhanced overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/70 z-10"></div>
+      <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/70 via-black/50 to-black/70"></div>
       <video
         autoPlay
         loop
         muted
         playsInline
-        className="absolute inset-0 w-full h-full object-cover z-0 opacity-70 pointer-events-none"
+        className="absolute inset-0 z-0 object-cover w-full h-full pointer-events-none opacity-70"
       >
         <source src="/blip3.mp4" type="video/mp4" />
         Your browser does not support the video tag.
@@ -119,23 +132,23 @@ function LoginForm() {
 
       {/* Success Messages */}
       {showSuccess && (
-        <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in font-sans">
+        <div className="fixed z-50 px-6 py-3 font-sans text-white bg-green-500 rounded-lg shadow-lg top-4 right-4 animate-fade-in">
           Successfully logged in! Welcome back.
         </div>
       )}
       {showResetMessage && (
-        <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in font-sans">
+        <div className="fixed z-50 px-6 py-3 font-sans text-white bg-green-500 rounded-lg shadow-lg top-4 right-4 animate-fade-in">
           Password reset email sent. Please check your inbox.
         </div>
       )}
 
       <form 
         onSubmit={handleSubmit} 
-        className="relative z-20 w-full max-w-md space-y-6 p-8 mt-8 md:mt-16"
+        className="relative z-20 w-full max-w-md p-8 mt-8 space-y-6 md:mt-16"
         aria-label="Login form"
       >
-        <div className="text-center mb-8 mt-6">
-          <p className="text-zinc-300/80 text-base tracking-wider font-sans">login</p>
+        <div className="mt-6 mb-8 text-center">
+          <p className="font-sans text-base tracking-wider text-zinc-300/80">login</p>
         </div>
 
         <div className="space-y-1">
@@ -153,7 +166,7 @@ function LoginForm() {
             aria-describedby={errors.email ? "email-error" : undefined}
           />
           {errors.email && (
-            <p id="email-error" className="text-red-400 text-xs mt-1 font-sans">{errors.email}</p>
+            <p id="email-error" className="mt-1 font-sans text-xs text-red-400">{errors.email}</p>
           )}
         </div>
 
@@ -172,7 +185,7 @@ function LoginForm() {
             aria-describedby={errors.password ? "password-error" : undefined}
           />
           {errors.password && (
-            <p id="password-error" className="text-red-400 text-xs mt-1 font-sans">{errors.password}</p>
+            <p id="password-error" className="mt-1 font-sans text-xs text-red-400">{errors.password}</p>
           )}
         </div>
 
@@ -180,14 +193,14 @@ function LoginForm() {
           <button
             type="button"
             onClick={handleForgotPassword}
-            className="text-xs text-zinc-300/80 hover:text-white transition-colors duration-200 font-sans"
+            className="font-sans text-xs transition-colors duration-200 text-zinc-300/80 hover:text-white"
           >
             Forgot password?
           </button>
         </div>
 
         {errors.submit && (
-          <p className="text-red-400 text-xs text-center font-sans">{errors.submit}</p>
+          <p className="font-sans text-xs text-center text-red-400">{errors.submit}</p>
         )}
 
         <button 
@@ -200,9 +213,9 @@ function LoginForm() {
           {isLoading ? 'Signing in...' : 'Sign in'}
         </button>
 
-        <div className="text-center mt-4">
-          <span className="text-xs text-zinc-300/80 font-sans">Don't have an account? </span>
-          <a href="/" className="text-xs font-bold text-white hover:underline font-sans">Sign up</a>
+        <div className="mt-4 text-center">
+          <span className="font-sans text-xs text-zinc-300/80">Don't have an account? </span>
+          <a href="/signup" className="font-sans text-xs font-bold text-white hover:underline">Sign up</a>
         </div>
 
         <div className="relative">
