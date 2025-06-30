@@ -1,5 +1,10 @@
 import React from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { AuthProvider } from "../contexts/AuthContext";
 import SignupForm from "../components/SignupForm";
@@ -17,13 +22,20 @@ export default function AppRoutes() {
   return (
     <Routes>
       {/* Default Route */}
-      <Route path="/" element={
-        currentUser && userProfile
-            ? userProfile.role === "admin"
-            ? <Navigate to="/admin" />
-            : <Navigate to="/dashboard" />
-            : <Navigate to="/login" />
-        } />
+      <Route
+        path="/"
+        element={
+          currentUser && userProfile ? (
+            userProfile.role === "admin" ? (
+              <Navigate to="/admin" />
+            ) : (
+              <Navigate to="/dashboard" />
+            )
+          ) : (
+            <Navigate to="/login" />
+          )
+        }
+      />
 
       {/* Public */}
       <Route path="/login" element={<LoginForm />} />
@@ -43,6 +55,15 @@ export default function AppRoutes() {
         element={
           <ProtectedRoute requiredRole="admin">
             <AdminPanel />
+          </ProtectedRoute>
+        }
+      />
+      {/* Allow admin to access dashboard too */}
+      <Route
+        path="/dashboard-admin"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <UserDashboard />
           </ProtectedRoute>
         }
       />

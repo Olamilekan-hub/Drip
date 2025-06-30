@@ -1,10 +1,9 @@
 import React, { useState } from "react";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { auth, db } from "../firebase/config";
-import { doc, setDoc } from "firebase/firestore";
+import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
 function SignupForm() {
+  console.log("SignupForm rendered");
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -21,9 +20,10 @@ function SignupForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-    const navigate = useNavigate();
-    
+  const navigate = useNavigate();
+
   const validateForm = () => {
+    console.log("SignupForm validateForm", formData);
     const newErrors = {};
     if (formData.name.length < 2) {
       newErrors.name = "Name must be at least 2 characters";
@@ -51,6 +51,7 @@ function SignupForm() {
   };
 
   const handleChange = (e) => {
+    console.log("SignupForm handleChange", e.target.name, e.target.value);
     const { name, value, type, checked } = e.target;
     setFormData((prev) => ({
       ...prev,
@@ -65,38 +66,32 @@ function SignupForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
-
     setIsSubmitting(true);
     try {
-      // Create user with Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        formData.email,
-        formData.password
+      // Call backend API to register user
+      const response = await axios.post(
+        `${process.env.REACT_APP_API_BASE.replace(/\/$/, "")}/users`,
+        {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          country: formData.country,
+          city: formData.city,
+          updates: formData.updates,
+          consent: formData.consent,
+          role: formData.isAdmin ? "admin" : "user",
+          adminCode: formData.adminCode,
+        }
       );
-      // Optionally update user profile with name
-      await updateProfile(userCredential.user, { displayName: formData.name });
-      // Store extra user data in Firestore
-      await setDoc(doc(db, "users", userCredential.user.uid), {
-      name: formData.name,
-      email: formData.email,
-      country: formData.country,
-      city: formData.city,
-      updates: formData.updates,
-      role: formData.isAdmin ? "admin" : "user",
-      createdAt: new Date().toISOString()
-    });
-
-    await updateProfile(userCredential.user, { displayName: formData.name });
-    if (formData.isAdmin) {
-      navigate("/admin");
-    } else {
-      navigate("/dashboard");
-    }
-
-      // Show success message
+      // Save token/user info as needed (e.g., localStorage)
+      localStorage.setItem("token", response.data.token);
+      // On success, redirect based on role
+      if (formData.isAdmin) {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
       setShowSuccess(true);
-      // Clear form
       setFormData({
         name: "",
         email: "",
@@ -105,17 +100,15 @@ function SignupForm() {
         city: "",
         consent: false,
         updates: false,
+        isAdmin: false,
+        adminCode: "",
       });
-      // Hide success message after 3 seconds
       setTimeout(() => setShowSuccess(false), 3000);
     } catch (err) {
-      console.error(err);
       let errorMsg = "Something went wrong. Please try again.";
-      if (err.code === "auth/email-already-in-use")
-        errorMsg = "Email is already in use.";
-      if (err.code === "auth/invalid-email")
-        errorMsg = "Invalid email address.";
-      if (err.code === "auth/weak-password") errorMsg = "Password is too weak.";
+      if (err.response && err.response.data && err.response.data.error) {
+        errorMsg = err.response.data.error;
+      }
       setErrors({ submit: errorMsg });
     } finally {
       setIsSubmitting(false);

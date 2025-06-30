@@ -1,3 +1,5 @@
+// This file is deprecated and no longer used. All authentication and user management now use the backend API and MongoDB.
+
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
@@ -11,7 +13,7 @@ const firebaseConfig = {
   projectId: "driplive-97a26",
   storageBucket: "driplive-97a26.firebasestorage.app",
   messagingSenderId: "16473390776",
-  appId: "1:16473390776:web:ff46d63e9c3cd141793e4d"
+  appId: "1:16473390776:web:ff46d63e9c3cd141793e4d",
 };
 
 // Initialize Firebase
