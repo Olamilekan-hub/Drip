@@ -5,8 +5,15 @@ import Event from "../models/Event.js";
 export const getEvents = async (req, res) => {
   console.log("getEvents called");
   try {
-    const events = await Event.find();
-    console.log("Events found:", events);
+    // Add query parameters for filtering
+    const { creatorId, status } = req.query;
+    let filter = {};
+    
+    if (creatorId) filter.creatorId = creatorId;
+    if (status) filter.status = status;
+    
+    const events = await Event.find(filter).sort({ createdAt: -1 });
+    console.log("Events found:", events.length);
     res.json(events);
   } catch (err) {
     console.error("Error in getEvents:", err);
@@ -32,10 +39,19 @@ export const getEventById = async (req, res) => {
 export const createEvent = async (req, res) => {
   console.log("createEvent called", req.body);
   try {
+    const eventData = { ...req.body };
+    
+    // Handle base64 image if provided
     if (req.body.imageBase64) {
-      newEvent.image = Buffer.from(req.body.imageBase64, "base64");
+      eventData.image = Buffer.from(req.body.imageBase64, "base64");
+      delete eventData.imageBase64; // Remove from data to avoid saving twice
     }
-    const newEvent = new Event(req.body);
+    
+    // Set default values
+    if (!eventData.soldTickets) eventData.soldTickets = 0;
+    if (!eventData.status) eventData.status = "upcoming";
+    
+    const newEvent = new Event(eventData);
     const saved = await newEvent.save();
     console.log("Event created:", saved);
     res.status(201).json(saved);
@@ -49,9 +65,20 @@ export const createEvent = async (req, res) => {
 export const updateEvent = async (req, res) => {
   console.log("updateEvent called", req.params, req.body);
   try {
-    const updated = await Event.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
+    const eventData = { ...req.body };
+    
+    // Handle base64 image if provided
+    if (req.body.imageBase64) {
+      eventData.image = Buffer.from(req.body.imageBase64, "base64");
+      delete eventData.imageBase64;
+    }
+    
+    const updated = await Event.findByIdAndUpdate(
+      req.params.id, 
+      eventData, 
+      { new: true, runValidators: true }
+    );
+    
     console.log("Event updated:", updated);
     if (!updated) return res.status(404).json({ error: "Event not found" });
     res.json(updated);
@@ -68,7 +95,7 @@ export const deleteEvent = async (req, res) => {
     const deleted = await Event.findByIdAndDelete(req.params.id);
     console.log("Event deleted:", deleted);
     if (!deleted) return res.status(404).json({ error: "Event not found" });
-    res.json({ message: "Event deleted" });
+    res.json({ message: "Event deleted successfully", id: req.params.id });
   } catch (err) {
     console.error("Error in deleteEvent:", err);
     res.status(500).json({ error: err.message });
