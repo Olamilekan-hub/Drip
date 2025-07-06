@@ -1,5 +1,6 @@
+// frontend/src/contexts/AuthContext.js
 import React, { createContext, useContext, useEffect, useState } from "react";
-import axios from "axios";
+import { loginUser, registerUser, fetchUserProfile } from "../api/api";
 
 const AuthContext = createContext({});
 
@@ -15,51 +16,80 @@ export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Login: set token and fetch user profile
+  // Login function with enhanced error handling
   const login = async (email, password) => {
-    const response = await axios.post(
-      `${process.env.REACT_APP_API_BASE.replace(/\/$/, "")}/users/login`,
-      { email, password }
-    );
-    let { token, user } = response.data;
-    
-    // Ensure role is always present with proper fallback
-    if (!user.role) user.role = "user";
-    
-    localStorage.setItem("token", token);
-    setCurrentUser(user);
-    setUserProfile(user);
-    setLoading(false);
-    return user;
+    try {
+      setError(null);
+      const { data: response, error: loginError } = await loginUser({ email, password });
+      
+      if (loginError) {
+        throw new Error(loginError);
+      }
+
+      const { token, user } = response;
+      
+      // Ensure role is always present with proper fallback
+      const userWithRole = {
+        ...user,
+        role: user.role || "user"
+      };
+      
+      localStorage.setItem("token", token);
+      setCurrentUser(userWithRole);
+      setUserProfile(userWithRole);
+      
+      return userWithRole;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
   };
 
-  // Register: create account and auto-login
+  // Register function with enhanced error handling
   const register = async (userData) => {
-    const response = await axios.post(
-      `${process.env.REACT_APP_API_BASE.replace(/\/$/, "")}/users`,
-      userData
-    );
-    let { token, user } = response.data;
-    
-    // Ensure role is always present
-    if (!user.role) user.role = "user";
-    
-    localStorage.setItem("token", token);
-    setCurrentUser(user);
-    setUserProfile(user);
-    return user;
+    try {
+      setError(null);
+      const { data: response, error: registerError } = await registerUser(userData);
+      
+      if (registerError) {
+        throw new Error(registerError);
+      }
+
+      const { token, user } = response;
+      
+      // Ensure role is always present
+      const userWithRole = {
+        ...user,
+        role: user.role || "user"
+      };
+      
+      localStorage.setItem("token", token);
+      setCurrentUser(userWithRole);
+      setUserProfile(userWithRole);
+      
+      return userWithRole;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
   };
 
-  // Logout: clear token and user
+  // Logout function with cleanup
   const logout = async () => {
-    localStorage.removeItem("token");
-    setCurrentUser(null);
-    setUserProfile(null);
+    try {
+      localStorage.removeItem("token");
+      setCurrentUser(null);
+      setUserProfile(null);
+      setError(null);
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
   };
 
-  // Fetch user profile from backend
-  const fetchUserProfile = async () => {
+  // Refresh user profile
+  const refreshProfile = async () => {
     const token = localStorage.getItem("token");
     if (!token) {
       setUserProfile(null);
@@ -69,34 +99,66 @@ export const AuthProvider = ({ children }) => {
     }
     
     try {
-      const response = await axios.get(
-        process.env.REACT_APP_API_BASE + "/users/me",
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      let user = response.data;
+      const { data: user, error: profileError } = await fetchUserProfile();
       
-      // Ensure role is always present with proper fallback
-      if (!user.role) user.role = "user";
-      
-      setUserProfile(user);
-      setCurrentUser(user);
+      if (profileError) {
+        console.error("Failed to fetch user profile:", profileError);
+        // Clear invalid token
+        localStorage.removeItem("token");
+        setUserProfile(null);
+        setCurrentUser(null);
+        setError("Session expired. Please login again.");
+      } else {
+        // Ensure role is always present with proper fallback
+        const userWithRole = {
+          ...user,
+          role: user.role || "user"
+        };
+        
+        setUserProfile(userWithRole);
+        setCurrentUser(userWithRole);
+        setError(null);
+      }
     } catch (error) {
-      console.error("Failed to fetch user profile:", error);
-      // Clear invalid token
+      console.error("Profile fetch error:", error);
       localStorage.removeItem("token");
       setUserProfile(null);
       setCurrentUser(null);
+      setError("Failed to load profile. Please login again.");
     }
     setLoading(false);
   };
 
+  // Update user profile
+  const updateProfile = async (updates) => {
+    try {
+      const { data: updatedUser, error: updateError } = await updateUserProfile(updates);
+      
+      if (updateError) {
+        throw new Error(updateError);
+      }
+
+      const userWithRole = {
+        ...updatedUser,
+        role: updatedUser.role || userProfile.role || "user"
+      };
+      
+      setUserProfile(userWithRole);
+      setCurrentUser(userWithRole);
+      
+      return userWithRole;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  };
+
+  // Initialize auth state on app load
   useEffect(() => {
-    fetchUserProfile();
+    refreshProfile();
   }, []);
 
-  // Role checking functions
+  // Role checking functions with improved hierarchy
   const isAdmin = () => userProfile?.role === "admin";
   
   const isCreator = () => 
@@ -121,9 +183,11 @@ export const AuthProvider = ({ children }) => {
     return userLevel >= requiredLevel;
   };
 
-  // Get user's primary dashboard route
+  // Get user's primary dashboard route based on role
   const getDashboardRoute = () => {
-    switch (userProfile?.role) {
+    if (!userProfile?.role) return "/dashboard";
+    
+    switch (userProfile.role) {
       case "admin":
         return "/admin";
       case "creator":
@@ -134,24 +198,95 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Get available navigation options for user
+  const getNavigationOptions = () => {
+    const options = [
+      {
+        label: "Dashboard",
+        path: "/dashboard",
+        icon: "🏠",
+        available: isUser(),
+        primary: userProfile?.role === "user"
+      }
+    ];
+
+    if (isCreator()) {
+      options.push({
+        label: "Creator Studio",
+        path: "/creator",
+        icon: "🎨",
+        available: true,
+        primary: userProfile?.role === "creator"
+      });
+    }
+
+    if (isAdmin()) {
+      options.push({
+        label: "Admin Panel",
+        path: "/admin",
+        icon: "⚙️",
+        available: true,
+        primary: userProfile?.role === "admin"
+      });
+    }
+
+    return options;
+  };
+
+  // Clear error function
+  const clearError = () => setError(null);
+
+  // Check if user is authenticated
+  const isAuthenticated = () => Boolean(currentUser && userProfile);
+
+  // Get user display info
+  const getUserDisplayInfo = () => {
+    if (!userProfile) return null;
+    
+    return {
+      name: userProfile.name || "User",
+      email: userProfile.email,
+      role: userProfile.role || "user",
+      initials: userProfile.name?.charAt(0)?.toUpperCase() || "U",
+      avatar: userProfile.avatar || null,
+      createdAt: userProfile.createdAt,
+      lastLogin: userProfile.lastLogin
+    };
+  };
+
   const value = {
+    // State
     currentUser,
     userProfile,
     loading,
+    error,
+    
+    // Actions
     login,
     register,
     logout,
+    updateProfile,
+    refreshProfile,
+    clearError,
+    
+    // Role checking
     isAdmin,
     isCreator,
     isUser,
     hasRole,
+    isAuthenticated,
+    
+    // Navigation
     getDashboardRoute,
-    refreshProfile: fetchUserProfile,
+    getNavigationOptions,
+    
+    // Utilities
+    getUserDisplayInfo,
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

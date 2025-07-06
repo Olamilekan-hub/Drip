@@ -1,15 +1,22 @@
-// backend/controllers/eventController.js
+// backend/controllers/eventController.js - FIXED VERSION
 import Event from "../models/Event.js";
+import mongoose from "mongoose";
 
 // GET all events
 export const getEvents = async (req, res) => {
   console.log("getEvents called");
   try {
-    // Add query parameters for filtering
     const { creatorId, status } = req.query;
     let filter = {};
     
-    if (creatorId) filter.creatorId = creatorId;
+    // Fix: Proper ObjectId comparison
+    if (creatorId) {
+      try {
+        filter.creatorId = new mongoose.Types.ObjectId(creatorId);
+      } catch (err) {
+        return res.status(400).json({ error: "Invalid creatorId format" });
+      }
+    }
     if (status) filter.status = status;
     
     const events = await Event.find(filter).sort({ createdAt: -1 });
@@ -25,6 +32,11 @@ export const getEvents = async (req, res) => {
 export const getEventById = async (req, res) => {
   console.log("getEventById called", req.params);
   try {
+    // Fix: Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: "Invalid event ID format" });
+    }
+    
     const event = await Event.findById(req.params.id);
     console.log("Event found:", event);
     if (!event) return res.status(404).json({ error: "Event not found" });
@@ -41,10 +53,15 @@ export const createEvent = async (req, res) => {
   try {
     const eventData = { ...req.body };
     
+    // Fix: Validate creatorId
+    if (!eventData.creatorId || !mongoose.Types.ObjectId.isValid(eventData.creatorId)) {
+      return res.status(400).json({ error: "Valid creatorId is required" });
+    }
+    
     // Handle base64 image if provided
     if (req.body.imageBase64) {
       eventData.image = Buffer.from(req.body.imageBase64, "base64");
-      delete eventData.imageBase64; // Remove from data to avoid saving twice
+      delete eventData.imageBase64;
     }
     
     // Set default values
@@ -65,6 +82,11 @@ export const createEvent = async (req, res) => {
 export const updateEvent = async (req, res) => {
   console.log("updateEvent called", req.params, req.body);
   try {
+    // Fix: Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: "Invalid event ID format" });
+    }
+    
     const eventData = { ...req.body };
     
     // Handle base64 image if provided
@@ -92,6 +114,11 @@ export const updateEvent = async (req, res) => {
 export const deleteEvent = async (req, res) => {
   console.log("deleteEvent called", req.params);
   try {
+    // Fix: Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: "Invalid event ID format" });
+    }
+    
     const deleted = await Event.findByIdAndDelete(req.params.id);
     console.log("Event deleted:", deleted);
     if (!deleted) return res.status(404).json({ error: "Event not found" });

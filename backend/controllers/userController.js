@@ -3,7 +3,7 @@ import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-// POST /users (register)
+// POST /api/users (register)
 export const registerUser = async (req, res) => {
   try {
     const { name, email, password, country, city, role, preferences } = req.body;
@@ -28,7 +28,7 @@ export const registerUser = async (req, res) => {
       role: role || "user",
     };
 
-    // Add creator profile if role is creator
+    // Add creator profile if role is creator or admin
     if (role === "creator" || role === "admin") {
       userData.creatorProfile = {
         bio: "",
@@ -64,7 +64,7 @@ export const registerUser = async (req, res) => {
   }
 };
 
-// POST /users/login
+// POST /api/users/login
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -104,7 +104,7 @@ export const loginUser = async (req, res) => {
   }
 };
 
-// GET /users/me (auth required)
+// GET /api/users/me (auth required)
 export const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
@@ -123,7 +123,7 @@ export const getMe = async (req, res) => {
   }
 };
 
-// PUT /users/me (auth required) - Update current user profile
+// PUT /api/users/me (auth required) - Update current user profile
 export const updateMe = async (req, res) => {
   try {
     const { name, country, city, preferences, creatorProfile } = req.body;
@@ -154,7 +154,7 @@ export const updateMe = async (req, res) => {
   }
 };
 
-// GET /users/ (admin only)
+// GET /api/users (admin only)
 export const getAllUsers = async (req, res) => {
   try {
     const { page = 1, limit = 50, role, search } = req.query;
@@ -188,7 +188,7 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-// PATCH /users/:id/role (admin only)
+// PATCH /api/users/:id/role (admin only)
 export const updateUserRole = async (req, res) => {
   try {
     const { role } = req.body;
