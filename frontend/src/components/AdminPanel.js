@@ -14,10 +14,11 @@ import {
 const AdminPanel = () => {
   const { currentUser, userProfile, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("events");
+  const [activeTab, setActiveTab] = useState("analytics");
   const [events, setEvents] = useState([]);
   const [users, setUsers] = useState([]);
   const [analytics, setAnalytics] = useState({});
+  const [loading, setLoading] = useState(true);
   const [showEventModal, setShowEventModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [eventForm, setEventForm] = useState({
@@ -34,131 +35,34 @@ const AdminPanel = () => {
   useEffect(() => {
     if (!isAdmin()) {
       navigate("/dashboard");
-    } else {
-      const loadAdminData = async () => {
-        try {
-          const [eventRes, userRes, analyticsRes] = await Promise.all([
-            fetchEvents(),
-            fetchUsers(),
-            fetchAnalytics(),
-          ]);
-          setEvents(eventRes.data);
-          setUsers(userRes.data);
-          setAnalytics(analyticsRes.data);
-        } catch (err) {
-          console.error("Error loading admin panel:", err);
-        }
-      };
-      loadAdminData();
+      return;
     }
+    loadAdminData();
   }, [userProfile, navigate, isAdmin]);
 
-  // Load mock data
-  useEffect(() => {
-    const mockEvents = [
-      {
-        id: 1,
-        title: "drip001/toronto",
-        description: "Electronic music experience in Toronto",
-        date: "2025-07-15",
-        time: "20:00",
-        price: 25,
-        totalTickets: 200,
-        soldTickets: 150,
-        status: "upcoming",
-        streamUrl: "https://stream.castr.com/event1",
-        createdAt: "2025-06-01",
-      },
-      {
-        id: 2,
-        title: "drip002/montreal",
-        description: "Underground house session",
-        date: "2025-06-28",
-        time: "21:00",
-        price: 30,
-        totalTickets: 100,
-        soldTickets: 100,
-        status: "live",
-        streamUrl: "https://stream.castr.com/event2",
-        createdAt: "2025-06-15",
-      },
-      {
-        id: 3,
-        title: "drip000/vancouver",
-        description: "Debut Vancouver show",
-        date: "2025-06-10",
-        time: "19:30",
-        price: 20,
-        totalTickets: 75,
-        soldTickets: 75,
-        status: "past",
-        streamUrl: "https://stream.castr.com/event3",
-        createdAt: "2025-05-20",
-      },
-    ];
+  const loadAdminData = async () => {
+    setLoading(true);
+    try {
+      const [eventRes, userRes, analyticsRes] = await Promise.all([
+        fetchEvents(),
+        fetchUsers(),
+        fetchAnalytics(),
+      ]);
+      
+      setEvents(eventRes.data || []);
+      setUsers(userRes.data || []);
+      setAnalytics(analyticsRes.data || {});
+    } catch (err) {
+      console.error("Error loading admin panel:", err);
+      // Set empty arrays to prevent crashes
+      setEvents([]);
+      setUsers([]);
+      setAnalytics({});
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const mockUsers = [
-      {
-        id: "user1",
-        name: "John Doe",
-        email: "john@example.com",
-        role: "user",
-        country: "Canada",
-        city: "Toronto",
-        joinDate: "2025-05-15",
-        ticketsPurchased: 3,
-        totalSpent: 75,
-      },
-      {
-        id: "user2",
-        name: "Jane Smith",
-        email: "jane@example.com",
-        role: "creator",
-        country: "Canada",
-        city: "Montreal",
-        joinDate: "2025-04-20",
-        ticketsPurchased: 5,
-        totalSpent: 125,
-      },
-      {
-        id: "user3",
-        name: "Admin User",
-        email: "admin@drip.live",
-        role: "admin",
-        country: "Canada",
-        city: "Vancouver",
-        joinDate: "2025-01-01",
-        ticketsPurchased: 0,
-        totalSpent: 0,
-      },
-    ];
-
-    const mockAnalytics = {
-      totalRevenue: 8750,
-      totalTicketsSold: 325,
-      totalUsers: 156,
-      activeEvents: 1,
-      monthlyRevenue: [
-        { month: "Jan", revenue: 1200 },
-        { month: "Feb", revenue: 1800 },
-        { month: "Mar", revenue: 2100 },
-        { month: "Apr", revenue: 1900 },
-        { month: "May", revenue: 2200 },
-        { month: "Jun", revenue: 2500 },
-      ],
-      topEvents: [
-        { name: "drip002/montreal", revenue: 3000, tickets: 100 },
-        { name: "drip001/toronto", revenue: 3750, tickets: 150 },
-        { name: "drip000/vancouver", revenue: 1500, tickets: 75 },
-      ],
-    };
-
-    setEvents(mockEvents);
-    setUsers(mockUsers);
-    setAnalytics(mockAnalytics);
-  }, []);
-
-  // Helper to reset event form
   const resetForm = () => {
     setEventForm({
       title: "",
@@ -183,22 +87,32 @@ const AdminPanel = () => {
   const handleEventSubmit = async (e) => {
     e.preventDefault();
     try {
+      const eventData = {
+        ...eventForm,
+        creatorId: currentUser._id, // Admin creates events
+        price: parseFloat(eventForm.price),
+        totalTickets: parseInt(eventForm.totalTickets),
+      };
+
       if (editingEvent) {
-        const updated = await updateEvent(editingEvent._id, eventForm);
-        setEvents(
-          events.map((event) =>
-            event._id === updated.data._id ? updated.data : event
-          )
-        );
+        const updated = await updateEvent(editingEvent._id, eventData);
+        setEvents(events.map(event => 
+          event._id === updated.data._id ? updated.data : event
+        ));
       } else {
-        const created = await createEvent(eventForm);
-        setEvents([...events, created.data]);
+        const created = await createEvent(eventData);
+        setEvents([created.data, ...events]);
       }
+      
       setShowEventModal(false);
       setEditingEvent(null);
       resetForm();
+      
+      // Reload analytics to reflect changes
+      const analyticsRes = await fetchAnalytics();
+      setAnalytics(analyticsRes.data);
     } catch (err) {
-      alert("Event submission failed");
+      alert("Event submission failed: " + (err.response?.data?.error || err.message));
       console.error(err);
     }
   };
@@ -221,9 +135,13 @@ const AdminPanel = () => {
     if (window.confirm("Are you sure you want to delete this event?")) {
       try {
         await deleteEvent(eventId);
-        setEvents(events.filter((event) => event._id !== eventId));
+        setEvents(events.filter(event => event._id !== eventId));
+        
+        // Reload analytics
+        const analyticsRes = await fetchAnalytics();
+        setAnalytics(analyticsRes.data);
       } catch (err) {
-        alert("Failed to delete");
+        alert("Failed to delete event: " + (err.response?.data?.error || err.message));
       }
     }
   };
@@ -235,38 +153,38 @@ const AdminPanel = () => {
     }
     try {
       const res = await updateUserRole(userId, role);
-      setUsers(users.map((u) => (u._id === res.data._id ? res.data : u)));
-      alert("Role updated");
+      setUsers(users.map(u => u._id === res.data._id ? res.data : u));
+      alert("Role updated successfully");
     } catch (err) {
-      alert("Failed to update role");
+      alert("Failed to update role: " + (err.response?.data?.error || err.message));
     }
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case "live":
-        return "bg-red-500";
-      case "upcoming":
-        return "bg-green-500";
-      case "past":
-        return "bg-gray-500";
-      default:
-        return "bg-gray-500";
+      case "live": return "bg-red-500";
+      case "upcoming": return "bg-green-500";
+      case "past": return "bg-gray-500";
+      default: return "bg-gray-500";
     }
   };
 
   const getRoleColor = (role) => {
     switch (role) {
-      case "admin":
-        return "text-red-400";
-      case "creator":
-        return "text-blue-400";
-      case "user":
-        return "text-green-400";
-      default:
-        return "text-gray-400";
+      case "admin": return "text-red-400";
+      case "creator": return "text-blue-400";
+      case "user": return "text-green-400";
+      default: return "text-gray-400";
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-black">
+        <div className="text-white">Loading admin panel...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen text-white bg-black">
@@ -279,13 +197,13 @@ const AdminPanel = () => {
           </div>
           <div className="flex items-center space-x-4">
             <span className="text-sm text-zinc-400">
-              Admin: {userProfile?.name || userProfile?.displayName || "Admin"}
+              Admin: {userProfile?.name || "Admin"}
             </span>
             <button
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate("/user-view")}
               className="text-sm transition-colors text-zinc-400 hover:text-white"
             >
-              User Dashboard
+              User View
             </button>
             <button
               onClick={handleLogout}
@@ -335,49 +253,46 @@ const AdminPanel = () => {
                 <div className="p-6 rounded-lg bg-zinc-900">
                   <h3 className="mb-2 text-sm text-zinc-400">Total Revenue</h3>
                   <p className="text-2xl font-bold text-green-400">
-                    ${analytics.totalRevenue?.toLocaleString()}
+                    ${(analytics.totalRevenue || 0).toLocaleString()}
                   </p>
                 </div>
                 <div className="p-6 rounded-lg bg-zinc-900">
                   <h3 className="mb-2 text-sm text-zinc-400">Tickets Sold</h3>
                   <p className="text-2xl font-bold text-blue-400">
-                    {analytics.totalTicketsSold}
+                    {analytics.totalTicketsSold || 0}
                   </p>
                 </div>
                 <div className="p-6 rounded-lg bg-zinc-900">
                   <h3 className="mb-2 text-sm text-zinc-400">Total Users</h3>
                   <p className="text-2xl font-bold text-purple-400">
-                    {analytics.totalUsers}
+                    {analytics.totalUsers || users.length}
                   </p>
                 </div>
                 <div className="p-6 rounded-lg bg-zinc-900">
                   <h3 className="mb-2 text-sm text-zinc-400">Active Events</h3>
                   <p className="text-2xl font-bold text-red-400">
-                    {analytics.activeEvents}
+                    {analytics.activeEvents || events.filter(e => e.status === 'live').length}
                   </p>
                 </div>
               </div>
 
               {/* Top Events */}
               <div className="p-6 rounded-lg bg-zinc-900">
-                <h3 className="mb-4 text-lg font-semibold">
-                  Top Performing Events
-                </h3>
+                <h3 className="mb-4 text-lg font-semibold">Top Performing Events</h3>
                 <div className="space-y-3">
-                  {analytics.topEvents?.map((event, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between py-2"
-                    >
-                      <span className="font-medium">{event.name}</span>
-                      <div className="text-right">
-                        <div className="text-green-400">${event.revenue}</div>
-                        <div className="text-sm text-zinc-400">
-                          {event.tickets} tickets
+                  {analytics.topEvents?.length > 0 ? (
+                    analytics.topEvents.map((event, index) => (
+                      <div key={index} className="flex items-center justify-between py-2">
+                        <span className="font-medium">{event._id || event.name}</span>
+                        <div className="text-right">
+                          <div className="text-green-400">${event.revenue}</div>
+                          <div className="text-sm text-zinc-400">{event.tickets} tickets</div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <p className="text-zinc-400">No event data available yet</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -396,69 +311,63 @@ const AdminPanel = () => {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-                {events.map((event) => (
-                  <div key={event.id} className="p-6 rounded-lg bg-zinc-900">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold">{event.title}</h3>
-                      <div className="flex items-center space-x-2">
-                        <span
-                          className={`w-2 h-2 rounded-full ${getStatusColor(
-                            event.status
-                          )}`}
-                        ></span>
-                        <span className="text-sm capitalize text-zinc-400">
-                          {event.status}
-                        </span>
+              {events.length === 0 ? (
+                <div className="p-6 text-center rounded-lg bg-zinc-900">
+                  <p className="text-zinc-400">No events created yet</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
+                  {events.map((event) => (
+                    <div key={event._id} className="p-6 rounded-lg bg-zinc-900">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold">{event.title}</h3>
+                        <div className="flex items-center space-x-2">
+                          <span className={`w-2 h-2 rounded-full ${getStatusColor(event.status)}`}></span>
+                          <span className="text-sm capitalize text-zinc-400">{event.status}</span>
+                        </div>
+                      </div>
+
+                      <p className="mb-4 text-sm text-zinc-400">{event.description}</p>
+
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-zinc-400">Date:</span>
+                          <span>{event.date} at {event.time}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-400">Price:</span>
+                          <span>${event.price}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-400">Tickets:</span>
+                          <span>{event.soldTickets || 0}/{event.totalTickets}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-400">Revenue:</span>
+                          <span className="text-green-400">
+                            ${((event.soldTickets || 0) * event.price).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex mt-4 space-x-2">
+                        <button
+                          onClick={() => handleEditEvent(event)}
+                          className="flex-1 px-3 py-2 text-sm text-white transition-colors rounded bg-zinc-800 hover:bg-zinc-700"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteEvent(event._id)}
+                          className="flex-1 px-3 py-2 text-sm text-white transition-colors bg-red-600 rounded hover:bg-red-700"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
-
-                    <p className="mb-4 text-sm text-zinc-400">
-                      {event.description}
-                    </p>
-
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-zinc-400">Date:</span>
-                        <span>
-                          {event.date} at {event.time}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-zinc-400">Price:</span>
-                        <span>${event.price}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-zinc-400">Tickets:</span>
-                        <span>
-                          {event.soldTickets}/{event.totalTickets}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-zinc-400">Revenue:</span>
-                        <span className="text-green-400">
-                          ${event.soldTickets * event.price}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex mt-4 space-x-2">
-                      <button
-                        onClick={() => handleEditEvent(event)}
-                        className="flex-1 px-3 py-2 text-sm text-white transition-colors rounded bg-zinc-800 hover:bg-zinc-700"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteEvent(event.id)}
-                        className="flex-1 px-3 py-2 text-sm text-white transition-colors bg-red-600 rounded hover:bg-red-700"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -467,68 +376,59 @@ const AdminPanel = () => {
             <div>
               <h2 className="mb-6 text-xl font-semibold">User Management</h2>
 
-              <div className="overflow-hidden rounded-lg bg-zinc-900">
-                <table className="w-full">
-                  <thead className="border-b border-zinc-800">
-                    <tr>
-                      <th className="p-4 text-left text-zinc-400">User</th>
-                      <th className="p-4 text-left text-zinc-400">Role</th>
-                      <th className="p-4 text-left text-zinc-400">Location</th>
-                      <th className="p-4 text-left text-zinc-400">Joined</th>
-                      <th className="p-4 text-left text-zinc-400">Activity</th>
-                      <th className="p-4 text-left text-zinc-400">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((user) => (
-                      <tr key={user.id} className="border-b border-zinc-800">
-                        <td className="p-4">
-                          <div>
-                            <div className="font-medium">{user.name}</div>
-                            <div className="text-sm text-zinc-400">
-                              {user.email}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <span
-                            className={`capitalize font-medium ${getRoleColor(
-                              user.role
-                            )}`}
-                          >
-                            {user.role}
-                          </span>
-                        </td>
-                        <td className="p-4 text-sm text-zinc-400">
-                          {user.city}, {user.country}
-                        </td>
-                        <td className="p-4 text-sm text-zinc-400">
-                          {user.joinDate}
-                        </td>
-                        <td className="p-4 text-sm text-zinc-400">
-                          <div>{user.ticketsPurchased} tickets</div>
-                          <div className="text-green-400">
-                            ${user.totalSpent}
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <select
-                            value={user.role}
-                            onChange={(e) =>
-                              handleUserRoleChange(user.id, e.target.value)
-                            }
-                            className="px-3 py-1 text-sm text-white rounded bg-zinc-800"
-                          >
-                            <option value="user">User</option>
-                            <option value="creator">Creator</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                        </td>
+              {users.length === 0 ? (
+                <div className="p-6 text-center rounded-lg bg-zinc-900">
+                  <p className="text-zinc-400">No users found</p>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-lg bg-zinc-900">
+                  <table className="w-full">
+                    <thead className="border-b border-zinc-800">
+                      <tr>
+                        <th className="p-4 text-left text-zinc-400">User</th>
+                        <th className="p-4 text-left text-zinc-400">Role</th>
+                        <th className="p-4 text-left text-zinc-400">Location</th>
+                        <th className="p-4 text-left text-zinc-400">Joined</th>
+                        <th className="p-4 text-left text-zinc-400">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {users.map((user) => (
+                        <tr key={user._id} className="border-b border-zinc-800">
+                          <td className="p-4">
+                            <div>
+                              <div className="font-medium">{user.name}</div>
+                              <div className="text-sm text-zinc-400">{user.email}</div>
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <span className={`capitalize font-medium ${getRoleColor(user.role)}`}>
+                              {user.role}
+                            </span>
+                          </td>
+                          <td className="p-4 text-sm text-zinc-400">
+                            {user.city}, {user.country}
+                          </td>
+                          <td className="p-4 text-sm text-zinc-400">
+                            {new Date(user.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="p-4">
+                            <select
+                              value={user.role}
+                              onChange={(e) => handleUserRoleChange(user._id, e.target.value)}
+                              className="px-3 py-1 text-sm text-white rounded bg-zinc-800"
+                            >
+                              <option value="user">User</option>
+                              <option value="creator">Creator</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -536,69 +436,8 @@ const AdminPanel = () => {
           {activeTab === "content" && (
             <div>
               <h2 className="mb-6 text-xl font-semibold">Content Management</h2>
-
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <div className="p-6 rounded-lg bg-zinc-900">
-                  <h3 className="mb-4 text-lg font-semibold">Site Settings</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block mb-2 text-sm text-zinc-400">
-                        Platform Name
-                      </label>
-                      <input
-                        type="text"
-                        defaultValue="drip"
-                        className="w-full px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block mb-2 text-sm text-zinc-400">
-                        Platform Description
-                      </label>
-                      <textarea
-                        defaultValue="Live streaming music events platform"
-                        className="w-full h-20 px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none"
-                      />
-                    </div>
-                    <button className="px-4 py-2 text-black transition-colors bg-white rounded hover:bg-zinc-200">
-                      Save Settings
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-6 rounded-lg bg-zinc-900">
-                  <h3 className="mb-4 text-lg font-semibold">
-                    Featured Content
-                  </h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block mb-2 text-sm text-zinc-400">
-                        Featured Event
-                      </label>
-                      <select className="w-full px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none">
-                        <option>Select event...</option>
-                        {events.map((event) => (
-                          <option key={event.id} value={event.id}>
-                            {event.title}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block mb-2 text-sm text-zinc-400">
-                        Homepage Banner Text
-                      </label>
-                      <input
-                        type="text"
-                        defaultValue="Experience live music like never before"
-                        className="w-full px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none"
-                      />
-                    </div>
-                    <button className="px-4 py-2 text-black transition-colors bg-white rounded hover:bg-zinc-200">
-                      Update Content
-                    </button>
-                  </div>
-                </div>
+              <div className="p-6 rounded-lg bg-zinc-900">
+                <p className="text-zinc-400">Content management features coming soon...</p>
               </div>
             </div>
           )}
@@ -615,29 +454,21 @@ const AdminPanel = () => {
 
             <form onSubmit={handleEventSubmit} className="space-y-4">
               <div>
-                <label className="block mb-2 text-sm text-zinc-400">
-                  Title
-                </label>
+                <label className="block mb-2 text-sm text-zinc-400">Title</label>
                 <input
                   type="text"
                   value={eventForm.title}
-                  onChange={(e) =>
-                    setEventForm({ ...eventForm, title: e.target.value })
-                  }
+                  onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
                   className="w-full px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="block mb-2 text-sm text-zinc-400">
-                  Description
-                </label>
+                <label className="block mb-2 text-sm text-zinc-400">Description</label>
                 <textarea
                   value={eventForm.description}
-                  onChange={(e) =>
-                    setEventForm({ ...eventForm, description: e.target.value })
-                  }
+                  onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
                   className="w-full h-20 px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none"
                   required
                 />
@@ -645,29 +476,21 @@ const AdminPanel = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block mb-2 text-sm text-zinc-400">
-                    Date
-                  </label>
+                  <label className="block mb-2 text-sm text-zinc-400">Date</label>
                   <input
                     type="date"
                     value={eventForm.date}
-                    onChange={(e) =>
-                      setEventForm({ ...eventForm, date: e.target.value })
-                    }
+                    onChange={(e) => setEventForm({ ...eventForm, date: e.target.value })}
                     className="w-full px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block mb-2 text-sm text-zinc-400">
-                    Time
-                  </label>
+                  <label className="block mb-2 text-sm text-zinc-400">Time</label>
                   <input
                     type="time"
                     value={eventForm.time}
-                    onChange={(e) =>
-                      setEventForm({ ...eventForm, time: e.target.value })
-                    }
+                    onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })}
                     className="w-full px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none"
                     required
                   />
@@ -676,32 +499,24 @@ const AdminPanel = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block mb-2 text-sm text-zinc-400">
-                    Price ($)
-                  </label>
+                  <label className="block mb-2 text-sm text-zinc-400">Price ($)</label>
                   <input
                     type="number"
+                    step="0.01"
+                    min="0"
                     value={eventForm.price}
-                    onChange={(e) =>
-                      setEventForm({ ...eventForm, price: e.target.value })
-                    }
+                    onChange={(e) => setEventForm({ ...eventForm, price: e.target.value })}
                     className="w-full px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block mb-2 text-sm text-zinc-400">
-                    Total Tickets
-                  </label>
+                  <label className="block mb-2 text-sm text-zinc-400">Total Tickets</label>
                   <input
                     type="number"
+                    min="1"
                     value={eventForm.totalTickets}
-                    onChange={(e) =>
-                      setEventForm({
-                        ...eventForm,
-                        totalTickets: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setEventForm({ ...eventForm, totalTickets: e.target.value })}
                     className="w-full px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none"
                     required
                   />
@@ -709,15 +524,11 @@ const AdminPanel = () => {
               </div>
 
               <div>
-                <label className="block mb-2 text-sm text-zinc-400">
-                  Stream URL
-                </label>
+                <label className="block mb-2 text-sm text-zinc-400">Stream URL</label>
                 <input
                   type="url"
                   value={eventForm.streamUrl}
-                  onChange={(e) =>
-                    setEventForm({ ...eventForm, streamUrl: e.target.value })
-                  }
+                  onChange={(e) => setEventForm({ ...eventForm, streamUrl: e.target.value })}
                   className="w-full px-3 py-2 text-white border rounded bg-zinc-800 border-zinc-700 focus:border-white focus:outline-none"
                   required
                 />
@@ -735,15 +546,7 @@ const AdminPanel = () => {
                   onClick={() => {
                     setShowEventModal(false);
                     setEditingEvent(null);
-                    setEventForm({
-                      title: "",
-                      description: "",
-                      date: "",
-                      time: "",
-                      price: "",
-                      totalTickets: "",
-                      streamUrl: "",
-                    });
+                    resetForm();
                   }}
                   className="flex-1 px-4 py-2 text-white transition-colors rounded bg-zinc-800 hover:bg-zinc-700"
                 >

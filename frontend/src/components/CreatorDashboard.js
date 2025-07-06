@@ -38,21 +38,31 @@ const CreatorDashboard = ({ activeTab: initialTab = "overview" }) => {
 
   const loadCreatorData = async () => {
     try {
-      // Load creator's events and analytics
-      const [eventRes, analyticsRes] = await Promise.all([
-        fetchEvents(), // Filter by creator ID in real implementation
-        fetchAnalytics(),
-      ]);
+      // Load creator's events - filter by creator ID
+      const eventRes = await fetchEvents();
+      const allEvents = eventRes.data || [];
       
-      // Filter events by creator (in real app, this would be done on backend)
-      const creatorEvents = eventRes.data.filter(event => 
+      // Filter events by creator ID
+      const creatorEvents = allEvents.filter(event => 
         event.creatorId === currentUser._id
       );
       
       setEvents(creatorEvents);
-      setAnalytics(analyticsRes.data);
+      
+      // Calculate creator-specific analytics
+      const creatorAnalytics = {
+        totalEvents: creatorEvents.length,
+        totalRevenue: creatorEvents.reduce((sum, event) => sum + ((event.soldTickets || 0) * event.price), 0),
+        totalTicketsSold: creatorEvents.reduce((sum, event) => sum + (event.soldTickets || 0), 0),
+        upcomingEvents: creatorEvents.filter(e => e.status === 'upcoming').length,
+        liveEvents: creatorEvents.filter(e => e.status === 'live').length,
+      };
+      
+      setAnalytics(creatorAnalytics);
     } catch (err) {
       console.error("Error loading creator data:", err);
+      setEvents([]);
+      setAnalytics({});
     }
   };
 

@@ -11,7 +11,6 @@ import {
 } from "../api/api";
 
 const UserDashboard = () => {
-  console.log("UserDashboard rendered");
   const { currentUser, userProfile, logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("events");
@@ -20,6 +19,7 @@ const UserDashboard = () => {
   const [events, setEvents] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [watchHistory, setWatchHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({
     name: "",
@@ -29,33 +29,41 @@ const UserDashboard = () => {
   });
 
   useEffect(() => {
-    console.log("UserDashboard useEffect (mock events load)");
-    const loadData = async () => {
-      try {
-        const [eventsRes, ticketsRes, historyRes, userRes] = await Promise.all([
-          fetchEvents(),
-          fetchUserTickets(currentUser._id),
-          fetchWatchHistory(currentUser._id),
-          fetchUserProfile(), // no argument needed
-        ]);
-
-        setEvents(eventsRes.data);
-        setTickets(ticketsRes.data);
-        setWatchHistory(historyRes.data);
-
-        setProfileForm({
-          name: userRes.data.name || "",
-          email: userRes.data.email || "",
-          country: userRes.data.country || "",
-          city: userRes.data.city || "",
-        });
-      } catch (err) {
-        console.error("Failed to load dashboard data:", err);
-      }
-    };
-
-    if (currentUser?._id) loadData();
+    if (currentUser?._id) {
+      loadUserData();
+    }
   }, [currentUser]);
+
+  const loadUserData = async () => {
+    setLoading(true);
+    try {
+      const [eventsRes, ticketsRes, historyRes] = await Promise.all([
+        fetchEvents(),
+        fetchUserTickets(currentUser._id),
+        fetchWatchHistory(currentUser._id),
+      ]);
+
+      setEvents(eventsRes.data || []);
+      setTickets(ticketsRes.data || []);
+      setWatchHistory(historyRes.data || []);
+
+      // Set profile form data
+      setProfileForm({
+        name: userProfile?.name || "",
+        email: userProfile?.email || "",
+        country: userProfile?.country || "",
+        city: userProfile?.city || "",
+      });
+    } catch (err) {
+      console.error("Failed to load dashboard data:", err);
+      // Set empty arrays to prevent crashes
+      setEvents([]);
+      setTickets([]);
+      setWatchHistory([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -69,11 +77,11 @@ const UserDashboard = () => {
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
     try {
-      await updateUserProfile(undefined, profileForm); // no userId needed
+      await updateUserProfile(undefined, profileForm);
       alert("Profile updated successfully!");
       setIsEditingProfile(false);
     } catch (err) {
-      alert("Failed to update profile");
+      alert("Failed to update profile: " + (err.response?.data?.error || err.message));
       console.error(err);
     }
   };
@@ -92,6 +100,10 @@ const UserDashboard = () => {
       const res = await purchaseTicket(event._id, ticketData);
       alert("Ticket purchased successfully!");
       setTickets((prev) => [...prev, res.data]);
+      
+      // Reload events to update sold ticket count
+      const eventsRes = await fetchEvents();
+      setEvents(eventsRes.data || []);
     } catch (err) {
       alert(err?.response?.data?.error || "Purchase failed");
     }
@@ -108,48 +120,29 @@ const UserDashboard = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case "live":
-        return "bg-red-500";
-      case "upcoming":
-        return "bg-green-500";
-      case "past":
-        return "bg-gray-500";
-      default:
-        return "bg-gray-500";
+      case "live": return "bg-red-500";
+      case "upcoming": return "bg-green-500";
+      case "past": return "bg-gray-500";
+      default: return "bg-gray-500";
     }
   };
 
   const getTicketStatusColor = (status) => {
     switch (status) {
-      case "active":
-        return "text-green-400";
-      case "used":
-        return "text-gray-400";
-      case "expired":
-        return "text-red-400";
-      default:
-        return "text-gray-400";
+      case "active": return "text-green-400";
+      case "used": return "text-gray-400";
+      case "expired": return "text-red-400";
+      default: return "text-gray-400";
     }
   };
 
-  const handleTabChange = (tab) => {
-    console.log("UserDashboard handleTabChange", tab);
-    setActiveTab(tab);
-  };
-
-  const handleProfileEdit = () => {
-    console.log("UserDashboard handleProfileEdit");
-    setIsEditingProfile(true);
-  };
-
-  const handleProfileSave = () => {
-    console.log("UserDashboard handleProfileSave", profileForm);
-    // In real app, this would call an API
-    //     console.log('Profile updated:', profileForm);
-    //     setIsEditingProfile(false);
-    //     // Show success message
-    //     alert('Profile updated successfully!');
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-black">
+        <div className="text-white">Loading dashboard...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen text-white bg-black">
@@ -162,8 +155,24 @@ const UserDashboard = () => {
           </div>
           <div className="flex items-center space-x-4">
             <span className="text-sm text-zinc-400">
-              Welcome, {userProfile?.name || userProfile?.displayName || "User"}
+              Welcome, {userProfile?.name || "User"}
             </span>
+            {(userProfile?.role === 'creator' || userProfile?.role === 'admin') && (
+              <button
+                onClick={() => navigate('/creator')}
+                className="text-sm transition-colors text-zinc-400 hover:text-white"
+              >
+                Creator Studio
+              </button>
+            )}
+            {userProfile?.role === 'admin' && (
+              <button
+                onClick={() => navigate('/admin')}
+                className="text-sm transition-colors text-zinc-400 hover:text-white"
+              >
+                Admin Panel
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="text-sm transition-colors text-zinc-400 hover:text-white"
@@ -228,49 +237,69 @@ const UserDashboard = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {filteredEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    className="overflow-hidden transition-colors rounded-lg bg-zinc-900 hover:bg-zinc-800"
-                  >
-                    <div className="flex items-center justify-center aspect-video bg-zinc-800">
-                      <span className="text-zinc-500">Event Image</span>
-                    </div>
-                    <div className="p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-semibold">{event.title}</h3>
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(
-                            event.status
-                          )}`}
-                        >
-                          {event.status}
-                        </span>
+              {filteredEvents.length === 0 ? (
+                <div className="p-6 text-center rounded-lg bg-zinc-900">
+                  <p className="text-zinc-400">
+                    {searchQuery || filterStatus !== "all" 
+                      ? "No events match your criteria" 
+                      : "No events available yet"}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {filteredEvents.map((event) => (
+                    <div
+                      key={event._id}
+                      className="overflow-hidden transition-colors rounded-lg bg-zinc-900 hover:bg-zinc-800"
+                    >
+                      <div className="flex items-center justify-center aspect-video bg-zinc-800">
+                        <span className="text-zinc-500">Event Image</span>
                       </div>
-                      <p className="mb-3 text-sm text-zinc-400">
-                        {event.description}
-                      </p>
-                      <div className="mb-3 text-sm text-zinc-300">
-                        <div>
-                          {event.date} at {event.time}
+                      <div className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-semibold">{event.title}</h3>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(
+                              event.status
+                            )}`}
+                          >
+                            {event.status}
+                          </span>
                         </div>
-                        <div>${event.price}</div>
+                        <p className="mb-3 text-sm text-zinc-400">
+                          {event.description}
+                        </p>
+                        <div className="mb-3 text-sm text-zinc-300">
+                          <div>{event.date} at {event.time}</div>
+                          <div>${event.price}</div>
+                          <div className="text-xs text-zinc-400">
+                            {event.soldTickets || 0}/{event.totalTickets} tickets sold
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (event.status === "live") {
+                              handleEventClick(event._id);
+                            } else {
+                              handleBuyTicket(event);
+                            }
+                          }}
+                          className="w-full py-2 font-semibold text-black transition-colors bg-white rounded-lg hover:bg-zinc-200"
+                          disabled={(event.soldTickets || 0) >= event.totalTickets && event.status !== "live"}
+                        >
+                          {event.status === "live"
+                            ? "Watch Now"
+                            : (event.soldTickets || 0) >= event.totalTickets
+                            ? "Sold Out"
+                            : event.status === "upcoming"
+                            ? "Get Ticket"
+                            : "View"}
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleBuyTicket(event)}
-                        className="w-full py-2 font-semibold text-black transition-colors bg-white rounded-lg hover:bg-zinc-200"
-                      >
-                        {event.status === "live"
-                          ? "Watch Now"
-                          : event.status === "upcoming"
-                          ? "Get Ticket"
-                          : "View"}
-                      </button>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -278,38 +307,42 @@ const UserDashboard = () => {
           {activeTab === "tickets" && (
             <div>
               <h2 className="mb-6 text-xl font-semibold">My Tickets</h2>
-              <div className="space-y-4">
-                {tickets.map((ticket) => (
-                  <div
-                    key={ticket.id}
-                    className="flex items-center justify-between p-6 rounded-lg bg-zinc-900"
-                  >
-                    <div>
-                      <h3 className="mb-1 font-semibold">
-                        {ticket.eventTitle}
-                      </h3>
-                      <p className="mb-2 text-sm text-zinc-400">
-                        Purchased: {ticket.purchaseDate} • ${ticket.price}
-                      </p>
-                      <span
-                        className={`text-sm font-medium ${getTicketStatusColor(
-                          ticket.status
-                        )}`}
-                      >
-                        {ticket.status.toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="flex items-center justify-center w-16 h-16 bg-white rounded-lg">
-                        <span className="text-xs text-black">QR</span>
+              {tickets.length === 0 ? (
+                <div className="p-6 text-center rounded-lg bg-zinc-900">
+                  <p className="text-zinc-400">You haven't purchased any tickets yet</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {tickets.map((ticket) => (
+                    <div
+                      key={ticket._id}
+                      className="flex items-center justify-between p-6 rounded-lg bg-zinc-900"
+                    >
+                      <div>
+                        <h3 className="mb-1 font-semibold">{ticket.eventTitle}</h3>
+                        <p className="mb-2 text-sm text-zinc-400">
+                          Purchased: {ticket.purchaseDate} • ${ticket.price}
+                        </p>
+                        <span
+                          className={`text-sm font-medium ${getTicketStatusColor(
+                            ticket.status
+                          )}`}
+                        >
+                          {ticket.status.toUpperCase()}
+                        </span>
                       </div>
-                      <button className="px-4 py-2 text-sm transition-colors rounded-lg bg-zinc-800 hover:bg-zinc-700">
-                        View Details
-                      </button>
+                      <div className="flex items-center space-x-3">
+                        <div className="flex items-center justify-center w-16 h-16 bg-white rounded-lg">
+                          <span className="text-xs text-black">QR</span>
+                        </div>
+                        <button className="px-4 py-2 text-sm transition-colors rounded-lg bg-zinc-800 hover:bg-zinc-700">
+                          View Details
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -317,27 +350,33 @@ const UserDashboard = () => {
           {activeTab === "history" && (
             <div>
               <h2 className="mb-6 text-xl font-semibold">Watch History</h2>
-              <div className="space-y-4">
-                {watchHistory.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center p-4 space-x-4 rounded-lg bg-zinc-900"
-                  >
-                    <div className="flex items-center justify-center w-24 h-16 rounded-lg bg-zinc-800">
-                      <span className="text-xs text-zinc-500">Thumb</span>
+              {watchHistory.length === 0 ? (
+                <div className="p-6 text-center rounded-lg bg-zinc-900">
+                  <p className="text-zinc-400">No watch history yet</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {watchHistory.map((item) => (
+                    <div
+                      key={item._id}
+                      className="flex items-center p-4 space-x-4 rounded-lg bg-zinc-900"
+                    >
+                      <div className="flex items-center justify-center w-24 h-16 rounded-lg bg-zinc-800">
+                        <span className="text-xs text-zinc-500">Thumb</span>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="mb-1 font-semibold">{item.eventTitle}</h3>
+                        <p className="text-sm text-zinc-400">
+                          Watched on {item.watchDate} • {item.duration}
+                        </p>
+                      </div>
+                      <button className="px-4 py-2 text-sm transition-colors rounded-lg bg-zinc-800 hover:bg-zinc-700">
+                        Watch Again
+                      </button>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="mb-1 font-semibold">{item.eventTitle}</h3>
-                      <p className="text-sm text-zinc-400">
-                        Watched on {item.watchDate} • {item.duration}
-                      </p>
-                    </div>
-                    <button className="px-4 py-2 text-sm transition-colors rounded-lg bg-zinc-800 hover:bg-zinc-700">
-                      Watch Again
-                    </button>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -355,14 +394,9 @@ const UserDashboard = () => {
               </div>
 
               {isEditingProfile ? (
-                <form
-                  onSubmit={handleProfileUpdate}
-                  className="max-w-md space-y-4"
-                >
+                <form onSubmit={handleProfileUpdate} className="max-w-md space-y-4">
                   <div>
-                    <label className="block mb-2 text-sm font-medium">
-                      Name
-                    </label>
+                    <label className="block mb-2 text-sm font-medium">Name</label>
                     <input
                       type="text"
                       value={profileForm.name}
@@ -370,45 +404,32 @@ const UserDashboard = () => {
                         setProfileForm({ ...profileForm, name: e.target.value })
                       }
                       className="w-full px-4 py-2 text-white border rounded-lg bg-zinc-800 border-zinc-700 focus:outline-none focus:ring-2 focus:ring-white/30"
+                      required
                     />
                   </div>
                   <div>
-                    <label className="block mb-2 text-sm font-medium">
-                      Email
-                    </label>
+                    <label className="block mb-2 text-sm font-medium">Email</label>
                     <input
                       type="email"
                       value={profileForm.email}
-                      onChange={(e) =>
-                        setProfileForm({
-                          ...profileForm,
-                          email: e.target.value,
-                        })
-                      }
-                      className="w-full px-4 py-2 text-white border rounded-lg bg-zinc-800 border-zinc-700 focus:outline-none focus:ring-2 focus:ring-white/30"
+                      className="w-full px-4 py-2 text-white border rounded-lg opacity-50 bg-zinc-800 border-zinc-700 focus:outline-none focus:ring-2 focus:ring-white/30"
                       disabled
                     />
+                    <p className="mt-1 text-xs text-zinc-400">Email cannot be changed</p>
                   </div>
                   <div>
-                    <label className="block mb-2 text-sm font-medium">
-                      Country
-                    </label>
+                    <label className="block mb-2 text-sm font-medium">Country</label>
                     <input
                       type="text"
                       value={profileForm.country}
                       onChange={(e) =>
-                        setProfileForm({
-                          ...profileForm,
-                          country: e.target.value,
-                        })
+                        setProfileForm({ ...profileForm, country: e.target.value })
                       }
                       className="w-full px-4 py-2 text-white border rounded-lg bg-zinc-800 border-zinc-700 focus:outline-none focus:ring-2 focus:ring-white/30"
                     />
                   </div>
                   <div>
-                    <label className="block mb-2 text-sm font-medium">
-                      City
-                    </label>
+                    <label className="block mb-2 text-sm font-medium">City</label>
                     <input
                       type="text"
                       value={profileForm.city}
@@ -430,32 +451,26 @@ const UserDashboard = () => {
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm text-zinc-400">Name</label>
-                      <p className="text-white">
-                        {userProfile?.name ||
-                          userProfile?.displayName ||
-                          "Not set"}
-                      </p>
+                      <p className="text-white">{userProfile?.name || "Not set"}</p>
                     </div>
                     <div>
                       <label className="text-sm text-zinc-400">Email</label>
                       <p className="text-white">{userProfile?.email}</p>
                     </div>
                     <div>
+                      <label className="text-sm text-zinc-400">Role</label>
+                      <p className="text-white capitalize">{userProfile?.role || "user"}</p>
+                    </div>
+                    <div>
                       <label className="text-sm text-zinc-400">Country</label>
-                      <p className="text-white">
-                        {userProfile?.country || "Not set"}
-                      </p>
+                      <p className="text-white">{userProfile?.country || "Not set"}</p>
                     </div>
                     <div>
                       <label className="text-sm text-zinc-400">City</label>
-                      <p className="text-white">
-                        {userProfile?.city || "Not set"}
-                      </p>
+                      <p className="text-white">{userProfile?.city || "Not set"}</p>
                     </div>
                     <div>
-                      <label className="text-sm text-zinc-400">
-                        Member Since
-                      </label>
+                      <label className="text-sm text-zinc-400">Member Since</label>
                       <p className="text-white">
                         {userProfile?.createdAt
                           ? new Date(userProfile.createdAt).toLocaleDateString()
